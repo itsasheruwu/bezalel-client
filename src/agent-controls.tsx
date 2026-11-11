@@ -8,7 +8,7 @@ const icons = { Astra: Orbit, Sol: Sun, Terra: Globe2, Luna: Moon };
 
 type Point = [number, number];
 // Round the shared silhouette rather than stacking overlapping bordered boxes.
-function roundedOutline(points: Point[]) {
+export function roundedOutline(points: Point[]) {
   const unique = points.filter((point, i) => point.some((value, axis) => value !== points[(i + points.length - 1) % points.length][axis]));
   const corners = unique.filter(([x, y], i) => {
     const before = unique[(i + unique.length - 1) % unique.length];

@@ -10,9 +10,14 @@ export type Pack = {
 export type Message = { role: "user" | "assistant"; text: string; choices?: string[] };
 export type Change = { path: string; content: string | null };
 export type Build = { jarPath: string; sha256: string; size: number; compilePassed: boolean; clientPassed: boolean; serverPassed: boolean; diagnostics: string[] };
+export type ContextUsage = { usedTokens: number; windowTokens: number | null; modelId: string };
+export type InstalledMod = { packId: string; filename: string; sha256: string };
+export type ModEvent = { afterMessage: number; kind: "moved" | "deleted"; packName: string };
 export type Draft = {
   threadId?: string | null; id: string; packId: string | null; title: string; targetId: string; mode: "direct" | "guided";
   idea: string | null; messages: Message[]; brief: string | null; changes: Change[]; build: Build | null;
+  contextUsage?: ContextUsage | null;
+  installedMod?: InstalledMod | null; modEvents?: ModEvent[];
 };
 export type ModelFamily = "Astra" | "Sol" | "Terra" | "Luna";
 export type AgentModel = { family: ModelFamily; version: string | null; modelId: string | null; efforts: string[] };

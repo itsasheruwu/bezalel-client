@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowDownToLine, ArrowLeft, ArrowRight, CheckCircle2, Clipboard, CloudDownload, FolderOpen, Hammer, History, Play, Plus, Server, ShieldCheck, UsersRound } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, ArrowRight, CheckCircle2, Clipboard, CloudDownload, FolderOpen, Hammer, History, Play, Plus, Server, ShieldCheck, Trash2, UsersRound } from "lucide-react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { Operate } from "./app";
 import { AccessCodeDialog } from "./access";
@@ -200,10 +200,10 @@ function PackDetail({ projects, onEdit, onDelete, pack, targetLabel, artwork, bu
   };
   return <>
     {removingMod && <Modal title="Remove installed mod" dismissible={!disabled} onClose={() => setRemovingMod(undefined)}><div className="stack"><p>Remove {removingMod} from {pack.name}? The JAR will be moved to Removed Mods in the pack folder. Its conversation, project and worlds stay in place.</p><Feedback {...{ busy, notice }} /><div className="actions end"><button autoFocus disabled={disabled} onClick={() => setRemovingMod(undefined)}>Cancel</button><button className="primary" disabled={disabled} onClick={() => void operate("Removing mod...", async () => { await command("remove_local_mod", { id: pack.id, filename: removingMod }); setRemovingMod(undefined); await loadDetails(); }, "Mod removed from the pack.")}>Remove mod</button></div></div></Modal>}
-    <div className="actions"><button className="secondary" disabled={disabled} onClick={onDelete}>Delete pack</button></div>
     <button className="text-button" onClick={onBack}><ArrowLeft size={17} />Your packs</button>
     <header className="page-heading pack-heading"><div><h1>{pack.name}</h1><p><span className="version">{targetLabel}</span> · {packStatus(pack)}</p></div>
-      <div className="actions"><button className="secondary" onClick={onFolder} disabled={disabled}><FolderOpen size={17} />Game folder</button>
+      <div className="actions"><button className="secondary" disabled={disabled} onClick={onDelete}><Trash2 size={17} />Delete pack</button>
+        <button className="secondary" onClick={onFolder} disabled={disabled}><FolderOpen size={17} />Game folder</button>
         {pack.ownerId && <button className="secondary" onClick={onSync} disabled={disabled}><CloudDownload size={17} />Sync</button>}
         {playDirect && <button className="secondary" onClick={onHandoff} disabled={disabled}>Use Minecraft Launcher</button>}
         <button className="primary" onClick={onPlay} disabled={disabled}><Play size={17} fill="currentColor" />{playDirect ? "Play" : "Play in Minecraft Launcher"}</button></div>
@@ -214,15 +214,16 @@ function PackDetail({ projects, onEdit, onDelete, pack, targetLabel, artwork, bu
     <Feedback {...{ busy, notice }} />
     {detailError && <Feedback notice={{ kind: "error", text: detailError }} />}
     {tab === "Mods" && <section className="stack">
-      {projects.length > 0 && <div className="stack"><h2>Your mod projects</h2>{projects.map(project => <div className="actions" key={project.id}><span>{project.title}</span><button className="secondary" onClick={() => onEdit(project.id)}>Edit mod</button></div>)}</div>}
-
       <div className="section-heading"><h2>{pack.ownerId ? "Published mods" : "Installed mods"}</h2><div className="actions">
         {!pack.ownerId && <button className="secondary" disabled={disabled} onClick={addMod}><Plus size={16} />Add mod file</button>}
         <button className="secondary" onClick={() => startMod(pack.id)}><Hammer size={16} />Create a mod</button>
       </div></div>
       {details?.active?.manifest.files.length ? <ul className="data-list">{details.active.manifest.files.map(item =>
         <li key={item.path}><span>{item.path.replace(/^mods\//, "")}</span><span className="version">{item.side}</span></li>)}</ul>
-        : details?.localMods.length ? <ul className="data-list">{details.localMods.map(name => <li key={name}><span>{name}</span><button className="text-button" disabled={disabled} aria-label={`Remove ${name}`} onClick={() => setRemovingMod(name)}>Remove</button></li>)}</ul>
+        : details?.localMods.length ? <ul className="data-list">{details.localMods.map(name => {
+          const project = projects.find(item => item.build?.jarPath.replaceAll("\\", "/").split("/").pop() === name);
+          return <li key={name}><span>{name}</span><span className="actions">{project && <button className="text-button" disabled={disabled} onClick={() => onEdit(project.id)}>Edit</button>}<button className="text-button" disabled={disabled} aria-label={`Remove ${name}`} onClick={() => setRemovingMod(name)}>Remove</button></span></li>;
+        })}</ul>
         : <Empty title="No mods yet">{pack.ownerId ? "Build a mod and send it to the pack for review." : `Add a .jar file you trust for ${targetLabel}, or create a mod for this pack.`}</Empty>}
     </section>}
     {tab === "Members" && <section className="stack">

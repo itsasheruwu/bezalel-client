@@ -126,6 +126,30 @@ pub struct Message {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ContextUsage {
+    pub used_tokens: u64,
+    pub window_tokens: Option<u64>,
+    pub model_id: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledMod {
+    pub pack_id: Uuid,
+    pub filename: String,
+    pub sha256: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModEvent {
+    pub after_message: usize,
+    pub kind: String,
+    pub pack_name: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Draft {
     pub id: Uuid,
     pub pack_id: Option<Uuid>,
@@ -133,6 +157,12 @@ pub struct Draft {
     pub target_id: String,
     pub mode: String,
     pub thread_id: Option<String>,
+    #[serde(default)]
+    pub context_usage: Option<ContextUsage>,
+    #[serde(default)]
+    pub installed_mod: Option<InstalledMod>,
+    #[serde(default)]
+    pub mod_events: Vec<ModEvent>,
     #[serde(default)]
     pub idea: Option<String>,
     pub messages: Vec<Message>,

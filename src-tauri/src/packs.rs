@@ -729,7 +729,7 @@ pub async fn install_local_mod(
     state: tauri::State<'_, State>,
     id: Uuid,
     draft_id: Uuid,
-) -> Result<()> {
+) -> Result<state::Draft> {
     let _draft_job = state.acquire(format!("draft:{draft_id}"))?;
     let _pack_job = state.acquire(format!("pack:{id}"))?;
     let data = state.data()?;
@@ -738,7 +738,10 @@ pub async fn install_local_mod(
     if pack.owner_id.is_some() || pack.target_id != draft.target_id || draft.pack_id != Some(id) {
         return Err("This draft must target the selected local pack.".into());
     }
-    let build = draft.build.ok_or("Build the mod before installing it.")?;
+    let build = draft
+        .build
+        .as_ref()
+        .ok_or("Build the mod before installing it.")?;
     if !build.compile_passed || !build.client_passed {
         return Err(
             "The compile and client startup tests must pass before installing a mod.".into(),
@@ -762,10 +765,10 @@ pub async fn install_local_mod(
     if state::target(&pack.target_id)?.loader == "fabric" {
         install_fabric_api(&dir).await?;
     }
-    crate::studio::write_atomic(&mods.join(filename), &bytes)
+    crate::mod_installation::install(&state, &draft, id, filename, &bytes, &build.sha256)
 }
 
-async fn install_fabric_api(game_dir: &Path) -> Result<()> {
+pub(crate) async fn install_fabric_api(game_dir: &Path) -> Result<()> {
     let artifact = sync::fabric_api_artifact();
     let destination = game_dir.join(&artifact.path);
     if let Ok(metadata) = fs::symlink_metadata(&destination) {
@@ -887,6 +890,13 @@ fn delete_pack_data(state: &State, id: Uuid) -> Result<()> {
             if draft.pack_id == Some(id) {
                 draft.pack_id = None;
             }
+            if draft
+                .installed_mod
+                .as_ref()
+                .is_some_and(|item| item.pack_id == id)
+            {
+                draft.installed_mod = None;
+            }
         }
         Ok(())
     })
@@ -942,7 +952,19 @@ pub fn remove_local_mod(state: tauri::State<'_, State>, id: Uuid, filename: Stri
     let dir = state.game_dir(&data, id);
     let _lock = sync::PackLock::acquire(&dir)?;
     crate::minecraft::game_process::ensure_idle(&dir)?;
-    archive_local_mod(&dir, &filename)
+    archive_local_mod(&dir, &filename)?;
+    state.update(|data| {
+        for draft in &mut data.drafts {
+            if draft
+                .installed_mod
+                .as_ref()
+                .is_some_and(|item| item.pack_id == id && item.filename == filename)
+            {
+                draft.installed_mod = None;
+            }
+        }
+        Ok(())
+    })
 }
 
 fn archive_local_mod(dir: &Path, filename: &str) -> Result<()> {

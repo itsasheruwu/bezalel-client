@@ -4,14 +4,21 @@ import { ArrowDownToLine, ArrowRight, Check, ExternalLink, FileCode2, Hammer, Me
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { Operate } from "./app";
 import { Brand, Feedback, Modal, type Notice } from "./components";
-import { command, loaderName, targetName, withProgress, type AgentModel, type ModelFamily, type Change, type Draft, type Snapshot } from "./model";
+import { command, loaderName, targetName, withProgress, type AgentModel, type ModelFamily, type ModEvent, type Change, type Draft, type Snapshot } from "./model";
 
 import { AgentControls } from "./agent-controls";
+import { ContextControl } from "./context-control";
+import { InstalledModControl } from "./installed-mod-control";
 import { ToolCalls, type ToolItem, type ToolActivity } from "./studio-activity";
 import { MessageBody } from "./message-body";
 
 type BuildRequest = { id: string; title: string; brief: string };
 type BuildResponse = { status: "complete"; draft: Draft } | { status: "consentRequired" };
+
+export function ModEventSeparator({ event }: { event: ModEvent }) {
+  const text = event.kind === "moved" ? "Mod was moved to" : "Mod was deleted from";
+  return <div className="mod-event-separator" role="separator" aria-label={`${text} ${event.packName}`}><span>{text} <strong>{event.packName}</strong></span></div>;
+}
 
 export function Studio({ snapshot, draftId, setDraftId, draftPackId, busy, notice, operate, setBusy, openSettings, refresh }: {
   snapshot: Snapshot; draftId?: string; setDraftId: (id?: string) => void; draftPackId?: string; busy: string; notice: Notice;
@@ -37,7 +44,6 @@ export function Studio({ snapshot, draftId, setDraftId, draftPackId, busy, notic
   const preferenceQueue = useRef<Promise<unknown>>(Promise.resolve());
   const storedPreference = useRef({ family, effort });
   const [attachments, setAttachments] = useState<{ name: string; path: string }[]>([]);
-  const [installConfirm, setInstallConfirm] = useState(false);
 
   const [stream, setStream] = useState("");
   const [brief, setBrief] = useState(draft?.brief ?? "");
@@ -65,6 +71,9 @@ export function Studio({ snapshot, draftId, setDraftId, draftPackId, busy, notic
   const target = snapshot.targets.find(item => item.id === draft?.targetId);
   const destination = snapshot.packs.find(item => item.id === draft?.packId);
   const canSubmit = destination?.ownerId && ["owner", "editor"].includes(destination.role);
+  const installed = draft?.installedMod;
+  const installedPack = snapshot.packs.find(item => item.id === installed?.packId);
+  const modEventsAt = (afterMessage: number) => draft?.modEvents?.filter(event => event.afterMessage === afterMessage).map((event, index) => <ModEventSeparator key={`${afterMessage}-${index}`} event={event} />);
   const disabled = Boolean(busy);
 
   const prepareTools = async (approved = false) => {
@@ -89,7 +98,7 @@ export function Studio({ snapshot, draftId, setDraftId, draftPackId, busy, notic
     setIdea(draft?.idea ?? "");
     setPrompt(draft?.idea ?? "");
   }, [draft?.id, draft?.idea]);
-  useEffect(() => { end.current?.scrollIntoView({ block: "nearest" }); }, [draft?.messages.length, stream, pending]);
+  useEffect(() => { end.current?.scrollIntoView({ block: "nearest" }); }, [draft?.messages.length, draft?.modEvents?.length, stream, pending]);
   useEffect(() => { if (draftPackId) setPackId(draftPackId); }, [draftPackId]);
 
   const loadModels = async () => {
@@ -222,17 +231,25 @@ export function Studio({ snapshot, draftId, setDraftId, draftPackId, busy, notic
       <div className="conversation" aria-label="Mod conversation">
         {!draft.messages.length && snapshot.chatgptConnected && <div className="chat-welcome"><Brand /><h2>What do you want to make?</h2><p>{draft.mode === "guided" ? "Share your idea and Codex will ask one question at a time." : "Describe a mechanic, item, block, or change you’d like to play."}</p></div>}
         {draft.messages.map((message, index) => <Fragment key={index}>
+          {modEventsAt(index)}
           {!working && index === draft.messages.length - 1 && message.role === "assistant" && <ToolCalls items={activity} />}
           <div className={`message ${message.role}`}><div className="message-author">{message.role === "user" ? "You" : "Bezalel"}</div><div className="message-content">{message.role === "assistant" ? <MessageBody text={message.text} disabled={disabled} onExport={draft.build ? () => void exportJar() : undefined} /> : <div className="bubble">{message.text}</div>}
             {index === draft.messages.length - 1 && !pending && message.choices?.length ? <div className="answer-row">{message.choices.map(choice => <button className="secondary" key={choice} disabled={disabled || !snapshot.chatgptConnected} onClick={() => void send(choice)}>{choice}</button>)}</div> : null}
           </div></div>
         </Fragment>)}
+        {modEventsAt(draft.messages.length)}
         {pending && <div className="message user"><div className="message-author">You</div><div className="bubble">{pending}</div></div>}
         {working && <ToolCalls items={activity} />}
         {stream && <div className="message assistant"><div className="message-author">Bezalel</div><MessageBody text={stream} /></div>}
         {draft.build && <div className="build-artifact"><Package size={21} /><div className="artifact-info"><strong>{draft.build.jarPath.replaceAll("\\", "/").split("/").pop()}</strong><span>{draft.build.compilePassed && draft.build.clientPassed && draft.build.serverPassed ? "Compile, client and server checks passed" : "Build completed with checks to review"}</span><div className="artifact-checks">{[["Compile", draft.build.compilePassed], ["Client", draft.build.clientPassed], ["Server", draft.build.serverPassed]].map(([label, passed]) => <span key={String(label)} data-passed={String(passed)}>{passed ? <Check size={11} /> : <X size={11} />}{label}</span>)}</div>{!!draft.build.diagnostics?.length && <details><summary>Build log</summary><pre>{draft.build.diagnostics.join("\n")}</pre></details>}</div>
           <button className="icon-button" aria-label="Export JAR" title="Export JAR" onClick={() => void exportJar()} disabled={disabled}><ArrowDownToLine size={16} /></button>
-          {destination && !destination.ownerId && <button className="primary" disabled={disabled || !draft.build.clientPassed} onClick={() => setInstallConfirm(true)}>Install...</button>}
+          {destination && !destination.ownerId && <InstalledModControl key={draft.id}
+            installed={!!installed && installed.sha256 === draft.build.sha256} disabled={disabled}
+            canInstall={draft.build.compilePassed && draft.build.clientPassed} packName={installedPack?.name ?? destination.name}
+            packs={snapshot.packs.filter(pack => !pack.ownerId && pack.targetId === draft.targetId && pack.id !== installed?.packId)}
+            onInstall={() => operate("Installing mod...", () => command<Draft>("install_local_mod", { id: destination.id, draftId: draft.id }), `Installed in ${destination.name}.`)}
+            onMove={pack => operate("Moving mod...", () => command<Draft>("move_installed_mod", { draftId: draft.id, packId: pack.id }), `Mod moved to ${pack.name}.`)}
+            onDelete={() => operate("Deleting installed mod...", () => command<Draft>("delete_installed_mod", { draftId: draft.id }), "Installed mod deleted. Conversation and source kept.")} />}
           {canSubmit && <button className="primary" disabled={disabled || !draft.build.clientPassed || !draft.build.serverPassed || !draft.build.compilePassed} onClick={() => setSubmit(true)}>Send to pack</button>}
         </div>}
         {(draft.brief || draft.messages.length > 0) && !pending && <details className="source-disclosure"><summary><ChevronDown size={13} />Brief & source</summary><div className="stack"><label>Mod brief<textarea value={brief} onChange={event => setBrief(event.target.value)} rows={3} placeholder="Describe what to build." /></label><div className="actions"><button className="secondary" disabled={disabled || toolsState === "preparing" || !snapshot.chatgptConnected || !brief.trim()} onClick={() => void build()}><Hammer size={14} />{draft.build ? "Rebuild" : "Build mod"}</button><button className="text-button" onClick={() => setShowChanges(true)}>View source changes</button></div></div></details>}
@@ -265,7 +282,10 @@ export function Studio({ snapshot, draftId, setDraftId, draftPackId, busy, notic
             <AgentControls models={models} family={family} effort={effort} disabled={disabled} loading={modelsLoading} error={modelsError} onChange={updatePreferences} onRefresh={() => void loadModels()} />
             {destination && <span className="composer-pack" title={destination.name}>{destination.name}</span>}
           </div>
-          {working ? <button type="button" className="send" aria-label="Stop agent" disabled={working === "build" && !busy.includes("Codex")} onClick={() => void command("studio_cancel", { id: draft.id })}><Square size={14} fill="currentColor" /></button> : <button className="send" aria-label="Send message" disabled={disabled || preferencesSaving || !prompt.trim() || !models.find(model => model.family === family)?.modelId}><ArrowUp size={19} /></button>}
+          <div className="composer-toolbar-right">
+            <ContextControl key={draft.id} draftId={draft.id} modelId={models.find(model => model.family === family)?.modelId} usage={draft.contextUsage} />
+            {working ? <button type="button" className="send" aria-label="Stop agent" disabled={working === "build" && !busy.includes("Codex")} onClick={() => void command("studio_cancel", { id: draft.id })}><Square size={14} fill="currentColor" /></button> : <button className="send" aria-label="Send message" disabled={disabled || preferencesSaving || !prompt.trim() || !models.find(model => model.family === family)?.modelId}><ArrowUp size={19} /></button>}
+          </div>
           </div>
         </form>
         <div className="composer-status" role="status">{toolsState === "ready" ? <><i />Tools ready</> : toolsState === "preparing" ? <><LoaderCircle size={11} className="spin" />{toolsProgress}</> : <button className="text-button" onClick={() => snapshot.builderEulaAccepted ? void prepareTools() : setToolsConsent(true)}>{toolsState === "error" ? "Retry tools setup" : "Prepare mod tools"}</button>}{preferencesSaving && <span>Saving preferences...</span>}</div>
@@ -274,7 +294,6 @@ export function Studio({ snapshot, draftId, setDraftId, draftPackId, busy, notic
 
       </div>}
     </section>}
-    {installConfirm && draft?.build && destination && <Modal title={`Install ${draft.title}`} onClose={() => setInstallConfirm(false)} dismissible={!disabled}><div className="stack"><p>Install this verified build in <strong>{destination.name}</strong>?</p><p className="muted">An existing mod with the same filename will be replaced. Worlds and settings stay in place.</p><Feedback {...{ busy, notice }} /><div className="actions end"><button autoFocus onClick={() => setInstallConfirm(false)}>Cancel</button><button className="primary" disabled={disabled} onClick={() => void operate("Installing mod...", async () => { await command("install_local_mod", { id: destination.id, draftId: draft.id }); setInstallConfirm(false); }, `Installed in ${destination.name}.`)}>Install mod</button></div></div></Modal>}
     {toolsConsent && <Modal title="Prepare mod tools" onClose={() => setToolsConsent(false)}>
       <div className="stack"><p>Bezalel will download and prepare the tools for your mod automatically. This is a one-time setup for each loader; you can continue chatting while it runs.</p><p>The startup checks run a temporary Minecraft server. Review and accept the Minecraft EULA to enable them.</p>
         <button className="text-button" onClick={() => void command("open_minecraft_eula")}>Read Minecraft EULA<ExternalLink size={15} /></button>

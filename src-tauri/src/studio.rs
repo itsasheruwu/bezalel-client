@@ -741,7 +741,7 @@ pub async fn run(
         let cwd = root.join("drafts").join(&req.draft_id);
         fs::create_dir_all(&cwd).map_err(message)?;
 
-        let mut rpc = Rpc::launch(&home, &cwd, &access).await?;
+        let mut rpc = Rpc::launch(&home, &cwd, &access, &model).await?;
         let thread_id = rpc
             .open_thread(&cwd, &model, req.thread_id.as_deref())
             .await?;
@@ -993,10 +993,26 @@ struct Rpc {
     output: Lines<BufReader<ChildStdout>>,
     next_id: u64,
     queued: VecDeque<Value>,
+    model_id: String,
+}
+
+fn context_usage(value: &Value, model_id: &str) -> Option<crate::state::ContextUsage> {
+    if value["method"] != "thread/tokenUsage/updated" {
+        return None;
+    }
+    let usage = &value["params"]["tokenUsage"];
+    Some(crate::state::ContextUsage {
+        // `total` is cumulative billing usage, not the active context size.
+        used_tokens: usage["last"]["totalTokens"].as_u64()?,
+        window_tokens: usage["modelContextWindow"]
+            .as_u64()
+            .filter(|size| *size > 0),
+        model_id: model_id.to_owned(),
+    })
 }
 
 impl Rpc {
-    async fn launch(home: &Path, cwd: &Path, access: &str) -> Result<Self, String> {
+    async fn launch(home: &Path, cwd: &Path, access: &str, model_id: &str) -> Result<Self, String> {
         let executable = codex_binary()?;
         let temp = home.join("temp");
         fs::create_dir_all(&temp).map_err(message)?;
@@ -1064,6 +1080,7 @@ impl Rpc {
             output: BufReader::new(output).lines(),
             next_id: 0,
             queued: VecDeque::new(),
+            model_id: model_id.to_owned(),
         };
         rpc.request("initialize", json!({
             "clientInfo": { "name": "bezalel", "title": "Bezalel", "version": env!("CARGO_PKG_VERSION") },
@@ -1142,6 +1159,30 @@ impl Rpc {
             if value.get("method").is_some() {
                 use tauri::Emitter;
                 if let Some(app) = APP.get() {
+                    if let (Some(usage), Some(thread)) = (
+                        context_usage(&value, &self.model_id),
+                        value["params"]["threadId"].as_str(),
+                    ) {
+                        use tauri::Manager;
+                        if let Some(state) = app.try_state::<crate::state::State>() {
+                            let saved = state.update(|data| {
+                                let draft = data
+                                    .drafts
+                                    .iter_mut()
+                                    .find(|draft| draft.thread_id.as_deref() == Some(thread));
+                                Ok(draft.map(|draft| {
+                                    draft.context_usage = Some(usage.clone());
+                                    draft.id
+                                }))
+                            });
+                            if let Ok(Some(id)) = saved {
+                                let _ = app.emit(
+                                    "studio-context",
+                                    json!({ "draftId": id, "contextUsage": usage }),
+                                );
+                            }
+                        }
+                    }
                     let _ = app.emit("codex-event", &value);
                 }
             }
@@ -1464,6 +1505,43 @@ pub(crate) mod platform {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn context_uses_latest_request_instead_of_cumulative_usage() {
+        let event = json!({ "method": "thread/tokenUsage/updated", "params": {
+            "tokenUsage": { "last": { "totalTokens": 40000 },
+                "total": { "totalTokens": 900000 }, "modelContextWindow": 100000 }
+        }});
+        let usage = context_usage(&event, "test-model").unwrap();
+        assert_eq!(usage.used_tokens, 40000);
+        assert_eq!(usage.window_tokens, Some(100000));
+        assert_eq!(usage.model_id, "test-model");
+        // Compaction can reduce active context even as lifetime usage increases.
+        let mut compacted = event.clone();
+        compacted["params"]["tokenUsage"]["last"]["totalTokens"] = json!(12000);
+        assert_eq!(
+            context_usage(&compacted, "test-model").unwrap().used_tokens,
+            12000
+        );
+    }
+
+    #[test]
+    fn context_does_not_invent_missing_telemetry() {
+        let mut event = json!({ "method": "thread/tokenUsage/updated", "params": {
+            "tokenUsage": { "last": { "totalTokens": 0 }, "modelContextWindow": null }
+        }});
+        let usage = context_usage(&event, "test-model").unwrap();
+        assert_eq!(usage.used_tokens, 0);
+        assert_eq!(usage.window_tokens, None);
+        event["params"]["tokenUsage"]["modelContextWindow"] = json!(0);
+        assert_eq!(
+            context_usage(&event, "test-model").unwrap().window_tokens,
+            None
+        );
+        event["params"]["tokenUsage"]["last"]["totalTokens"] = json!(-1);
+        assert!(context_usage(&event, "test-model").is_none());
+        assert!(context_usage(&json!({"method": "turn/completed"}), "test-model").is_none());
+    }
 
     fn parse_local_callback(request: &[u8], state: &str) -> Option<Callback> {
         parse_callback(request, state, "/auth/callback")

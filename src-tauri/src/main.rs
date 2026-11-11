@@ -6,6 +6,7 @@ mod builder_setup;
 mod commands;
 mod draft_files;
 mod minecraft;
+mod mod_installation;
 mod packs;
 mod secrets;
 mod sharing_auth;
@@ -82,6 +83,8 @@ fn main() {
             packs::submit_mod,
             packs::import_local_mod,
             packs::install_local_mod,
+            mod_installation::move_installed_mod,
+            mod_installation::delete_installed_mod,
             packs::create_candidate,
             packs::export_candidate,
             packs::publish_candidate,
