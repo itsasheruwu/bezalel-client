@@ -1,0 +1,39 @@
+[package]
+name = "bezalel"
+version = "0.2.2"
+edition = "2021"
+license = "MIT"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+bezalel-pack-sync = { path = "../crates/pack-sync" }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "net", "sync", "time", "fs"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+sha1 = "0.10"
+sha2 = "0.10"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+ring = "0.17"
+base64 = "0.22"
+url = "2"
+toml = "0.9"
+tar = "0.4"
+zip = { version = "4", default-features = false, features = ["deflate"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.release]
+strip = true
+codegen-units = 16

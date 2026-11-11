@@ -1,0 +1,39 @@
+plugins {
+    id 'fabric-loom' version '1.10.5'
+}
+
+version = '1.0.0'
+group = 'org.bezalel.generated'
+
+dependencies {
+    minecraft 'com.mojang:minecraft:1.21.1'
+    mappings loom.officialMojangMappings()
+    modImplementation 'net.fabricmc:fabric-loader:0.16.14'
+    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.110.0+1.21.1'
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+}
+
+loom {
+    runs {
+        client {
+            runDir 'run-client'
+            vmArg '-Xmx1200m'
+        }
+        server {
+            runDir 'run-server'
+            programArg 'nogui'
+            vmArg '-Xmx1200m'
+        }
+    }
+}
+
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+tasks.named('remapJar') {
+    archiveFileName = 'mod.jar'
+}

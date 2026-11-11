@@ -1,0 +1,42 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.80'
+}
+
+version = '1.0.0'
+group = 'org.bezalel.generated'
+def modId = providers.gradleProperty('bezalelModId').get()
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+}
+
+neoForge {
+    version = '21.1.217'
+    runs {
+        client {
+            client()
+            gameDirectory = project.file('run-client')
+            jvmArgument('-Xmx1200m')
+        }
+        server {
+            server()
+            gameDirectory = project.file('run-server')
+            programArgument('--nogui')
+            jvmArgument('-Xmx1200m')
+        }
+    }
+    mods {
+        "${modId}" {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+tasks.named('jar') {
+    archiveFileName = 'mod.jar'
+}

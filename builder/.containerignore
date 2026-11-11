@@ -1,0 +1,8 @@
+*
+!Containerfile
+!run.sh
+!smoke.sh
+!fixtures/
+!fixtures/**
+!templates/
+!templates/**

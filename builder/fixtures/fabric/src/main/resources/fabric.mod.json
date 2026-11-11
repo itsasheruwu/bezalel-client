@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "bezalel_fixture",
+  "version": "1.0.0",
+  "name": "Bezalel Build Fixture",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["org.bezalel.fixture.Fixture"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.14",
+    "minecraft": "1.21.1",
+    "java": ">=21"
+  }
+}

@@ -1,0 +1,23 @@
+node_modules/
+dist/
+target/
+**/gen/schemas/
+.env
+.env.*
+!.env.example
+*.sqlite*
+*.log
+.vite/
+.cache/
+.deploy/
+
+# Local launch material and production website workspace
+/design/
+/films/
+/website/
+
+# Optional Minecraft artwork from the publisher
+/src/assets/minecraft/*.jpg
+/railway.toml
+/Dockerfile
+/.dockerignore

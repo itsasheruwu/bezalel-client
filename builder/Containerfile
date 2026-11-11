@@ -1,0 +1,42 @@
+ARG BUILDER_BASE=docker.io/library/gradle:8.12.1-jdk21
+FROM ${BUILDER_BASE}
+
+ARG LOADER
+ARG ACCEPT_MINECRAFT_EULA
+USER root
+RUN test "$ACCEPT_MINECRAFT_EULA" = accepted \
+    && apt-get update \
+    && ( apt-get install -y --no-install-recommends libasound2t64 \
+         || apt-get install -y --no-install-recommends libasound2 ) \
+    && apt-get install -y --no-install-recommends xvfb xdotool libgl1-mesa-dri libglx-mesa0 \
+       libxrandr2 libxcursor1 libxi6 libxxf86vm1 libopenal1 fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/* \
+    && install -d -o 1000 -g 1000 /work /opt/bezalel/cache
+LABEL org.bezalel.minecraft-eula="accepted"
+
+COPY templates/${LOADER}/ /opt/bezalel/template/
+COPY fixtures/${LOADER}/src/ /opt/bezalel/fixture/src/
+COPY smoke.sh /usr/local/bin/bezalel-smoke
+COPY run.sh /usr/local/bin/bezalel-build
+RUN sed -i 's/\r$//' /usr/local/bin/bezalel-smoke /usr/local/bin/bezalel-build \
+    && chmod 0755 /usr/local/bin/bezalel-smoke /usr/local/bin/bezalel-build
+
+ENV HOME=/work/home GRADLE_USER_HOME=/work/gradle LIBGL_ALWAYS_SOFTWARE=1 LP_NUM_THREADS=2
+USER 1000:1000
+RUN mkdir -p "$HOME" /work/project "$GRADLE_USER_HOME" \
+    && cp -R /opt/bezalel/template/. /work/project/ \
+    && cp -R /opt/bezalel/fixture/src /work/project/ \
+    && cd /work/project \
+    && set -- build \
+    && if [ "$LOADER" = forge ]; then set -- "$@" prepareRunClient prepareRunServer; fi \
+    && gradle --no-daemon --console=plain --max-workers=2 -PbezalelModId=bezalel_fixture "$@" \
+    && bezalel-smoke client bezalel_fixture online \
+    && bezalel-smoke server bezalel_fixture online \
+    && cp -R "$GRADLE_USER_HOME" /opt/bezalel/cache/gradle \
+    && cp -R .gradle /opt/bezalel/cache/project \
+    && if [ -f build/downloadMCMeta/version.json ]; then \
+         cp build/downloadMCMeta/version.json /opt/bezalel/cache/mc-version.json; \
+       fi \
+    && rm -rf /work/project "$GRADLE_USER_HOME" "$HOME" /work/client.log /work/server.log /work/xvfb.log
+
+ENTRYPOINT ["/usr/local/bin/bezalel-build"]

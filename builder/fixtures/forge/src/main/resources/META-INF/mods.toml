@@ -1,0 +1,15 @@
+modLoader = "javafml"
+loaderVersion = "[52,53)"
+license = "MIT"
+
+[[mods]]
+modId = "bezalel_fixture"
+version = "1.0.0"
+displayName = "Bezalel Build Fixture"
+
+[[dependencies.bezalel_fixture]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[1.21.1]"
+ordering = "NONE"
+side = "BOTH"
