@@ -28,13 +28,14 @@ Validation: List the checks actually run and their results.
 + Added backend-enforced dependency approval cards, scoped Always Allow permissions, review and revocation in Settings, and offline resolution.
 + Added automatic chat scrolling, a floating jump-to-latest control, custom slim scrollbars, and contextual actions for conversations, modpacks, mods, text, code, and links.
 + Added connected context-menu surfaces and sliding hover highlights for both sidebars, context menus, and model selection.
-+ Added dependency, permission, download failure, rollback, scrolling, menu, and highlight tests, plus agent commit instructions.
++ Added dependency, permission, download failure, rollback, scrolling, menu, and highlight tests, plus agent commit instructions and a shared Claude entry point.
 = Fixed Windows agent workspace permissions so project commands and patches work while modpack installation stays behind the application tools.
 = Fixed dependency cards appearing before the relevant chat activity, verbose approval layouts, and inconsistent button colors.
 = Fixed highlight alignment while the model selector scales open and disabled options receiving hover highlights.
 - Removed the separate unconditional local Fabric API download path in favor of the shared dependency resolver.
 - Removed routine dependency project-choice dropdowns in favor of automatic verified identity matching; ambiguous matches stop with an explanation.
 - Removed default browser context-menu commands from app surfaces in favor of relevant application actions.
+- Removed desktop automation requirements from repository agent instructions.
 
 Validation: 38 UI tests and 42 Rust tests passed; six opt-in Rust tests were skipped. TypeScript/Vite production build, Rust check, formatting, and staged whitespace checks passed. Live provider, signed-in agent, desktop animation, and gameplay checks were not rerun for this commit.
 
