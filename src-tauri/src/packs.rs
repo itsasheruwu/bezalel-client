@@ -7,11 +7,11 @@ use crate::{
 use base64::{engine::general_purpose::STANDARD, Engine};
 use bezalel_pack_sync as sync;
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use std::io::{self, Seek};
 use std::{
     fs,
-    io::{self, Seek},
     path::{Path, PathBuf},
-    time::Duration,
 };
 use tauri::ipc::Channel;
 use uuid::Uuid;
@@ -636,19 +636,7 @@ pub async fn import_local_mod(
     id: Uuid,
     source: PathBuf,
 ) -> Result<String> {
-    let _job = state.acquire(format!("pack:{id}"))?;
-    let data = state.data()?;
-    if state::pack(&data, id)?.owner_id.is_some() {
-        return Err("Mod files can only be imported into local packs.".into());
-    }
-    let dir = state.game_dir(&data, id);
-    let _lock = sync::PackLock::acquire(&dir)?;
-    crate::minecraft::game_process::ensure_idle(&dir)?;
-    let mods = dir.join("mods");
-    state::ensure_directory(&mods)?;
-    tauri::async_runtime::spawn_blocking(move || copy_mod_file(&source, &mods))
-        .await
-        .map_err(err)?
+    crate::dependencies::import(&state, id, None, &source).await
 }
 
 fn is_jar(path: &Path) -> bool {
@@ -656,6 +644,7 @@ fn is_jar(path: &Path) -> bool {
         .is_some_and(|extension| extension.eq_ignore_ascii_case("jar"))
 }
 
+#[cfg(test)]
 fn copy_mod_file(source: &Path, mods: &Path) -> Result<String> {
     if !source.is_absolute() || !is_jar(source) {
         return Err("Choose a Minecraft mod file ending in .jar.".into());
@@ -756,54 +745,30 @@ pub async fn install_local_mod(
     if sync::FABRIC_API_PATH.ends_with(&format!("/{filename}")) {
         return Err("This filename is reserved for Fabric API.".into());
     }
-    let bytes = checked_jar(&build)?;
+    let bytes = checked_jar(build)?;
     let dir = state.game_dir(&data, id);
     let _lock = sync::PackLock::acquire(&dir)?;
     crate::minecraft::game_process::ensure_idle(&dir)?;
     let mods = dir.join("mods");
     state::ensure_directory(&mods)?;
-    if state::target(&pack.target_id)?.loader == "fabric" {
-        install_fabric_api(&dir).await?;
-    }
-    crate::mod_installation::install(&state, &draft, id, filename, &bytes, &build.sha256)
-}
-
-pub(crate) async fn install_fabric_api(game_dir: &Path) -> Result<()> {
-    let artifact = sync::fabric_api_artifact();
-    let destination = game_dir.join(&artifact.path);
-    if let Ok(metadata) = fs::symlink_metadata(&destination) {
-        if !metadata.is_file() || state::is_link(&metadata) || metadata.len() != artifact.bytes {
-            return Err("The local Fabric API file differs from the pinned dependency.".into());
-        }
-        let bytes = fs::read(&destination).map_err(err)?;
-        if sync::sha256_hex(&bytes) == artifact.sha256 {
-            return Ok(());
-        }
-        return Err("The local Fabric API file failed its integrity check.".into());
-    }
-    let http = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(Duration::from_secs(35))
-        .build()
-        .map_err(err)?;
-    let mut response = http
-        .get(sync::FABRIC_API_URL)
-        .send()
-        .await
-        .map_err(err)?
-        .error_for_status()
-        .map_err(err)?;
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(err)? {
-        if bytes.len() as u64 + chunk.len() as u64 > artifact.bytes {
-            return Err("Fabric API exceeded its expected size.".into());
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    if bytes.len() as u64 != artifact.bytes || sync::sha256_hex(&bytes) != artifact.sha256 {
-        return Err("Fabric API failed publisher verification.".into());
-    }
-    crate::studio::write_atomic(&destination, &bytes)
+    let prepared = crate::dependencies::prepare(
+        &state,
+        id,
+        Some(draft_id),
+        filename,
+        bytes.clone(),
+        draft.installed_mod.as_ref().map(|m| m.filename.as_str()),
+    )
+    .await?;
+    crate::mod_installation::install_bundle(
+        &state,
+        &draft,
+        id,
+        filename,
+        &bytes,
+        &build.sha256,
+        Some(prepared),
+    )
 }
 
 #[tauri::command]

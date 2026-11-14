@@ -10,10 +10,10 @@ use uuid::Uuid;
 // Keep file changes reversible until the matching draft update commits.
 // Removed/replaced JARs stay in the pack's existing removed-mods archive.
 #[derive(Default)]
-struct JarChanges {
+pub(crate) struct JarChanges {
     created: Vec<PathBuf>,
     archived: Vec<(PathBuf, PathBuf)>,
-    committed: bool,
+    pub(crate) committed: bool,
 }
 
 impl JarChanges {
@@ -27,7 +27,7 @@ impl JarChanges {
         Ok(())
     }
 
-    fn create(&mut self, path: &Path, bytes: &[u8]) -> Result<()> {
+    pub(crate) fn create(&mut self, path: &Path, bytes: &[u8]) -> Result<()> {
         let dir = path.parent().ok_or("Missing mod directory.")?;
         state::ensure_directory(dir)?;
         let staged = dir.join(format!(".bezalel-install-{}.tmp", Uuid::new_v4()));
@@ -89,6 +89,7 @@ fn verified_bytes(dir: &Path, installed: &InstalledMod) -> Result<Vec<u8>> {
 
 // The caller holds the draft/pack locks, checks game idleness, and prepares any
 // loader dependency before changing the actual mod or its saved installation.
+#[cfg(test)]
 pub fn install(
     state: &State,
     draft: &Draft,
@@ -96,6 +97,18 @@ pub fn install(
     filename: &str,
     bytes: &[u8],
     sha256: &str,
+) -> Result<Draft> {
+    install_bundle(state, draft, pack_id, filename, bytes, sha256, None)
+}
+
+pub fn install_bundle(
+    state: &State,
+    draft: &Draft,
+    pack_id: Uuid,
+    filename: &str,
+    bytes: &[u8],
+    sha256: &str,
+    prepared: Option<crate::dependencies::Prepared>,
 ) -> Result<Draft> {
     let data = state.data()?;
     if data.drafts.iter().any(|other| {
@@ -110,6 +123,15 @@ pub fn install(
     let dir = state.game_dir(&data, pack_id);
     let path = mod_path(&dir, filename)?;
     let mut changes = JarChanges::default();
+    if let Some(p) = &prepared {
+        if crate::dependencies::inventory(&dir)? != p.inventory {
+            return Err("Modpack changed; request a fresh plan.".into());
+        }
+        crate::minecraft::game_process::ensure_idle(&dir)?;
+        for a in p.artifacts.iter().skip(1) {
+            changes.create(&dir.join("mods").join(&a.filename), &a.bytes)?;
+        }
+    }
     let existing = match fs::symlink_metadata(&path) {
         Ok(meta) if meta.is_file() && !state::is_link(&meta) && meta.len() <= 64 * 1024 * 1024 => {
             Some(fs::read(&path).map_err(state::err)?)
@@ -140,6 +162,11 @@ pub fn install(
         changes.create(&path, bytes)?;
     }
     let updated = state.update(|data| {
+        if let Some(p) = &prepared {
+            data.dependency_records
+                .retain(|r| !(r.pack_id == pack_id && r.root == p.records[0].root));
+            data.dependency_records.extend(p.records.clone());
+        }
         state::update_draft(data, draft.id, |draft| {
             draft.installed_mod = Some(InstalledMod {
                 pack_id,
@@ -202,14 +229,31 @@ async fn move_mod(state: &State, draft_id: Uuid, pack_id: Uuid) -> Result<Draft>
     crate::minecraft::game_process::ensure_idle(&source_dir)?;
     crate::minecraft::game_process::ensure_idle(&destination_dir)?;
     let bytes = verified_bytes(&source_dir, &installed)?;
-    if state::target(&destination.target_id)?.loader == "fabric" {
-        crate::packs::install_fabric_api(&destination_dir).await?;
+    let prepared = crate::dependencies::prepare(
+        state,
+        pack_id,
+        Some(draft_id),
+        &installed.filename,
+        bytes.clone(),
+        None,
+    )
+    .await?;
+    // Approval can remain open while an external launcher/editor changes the source.
+    verified_bytes(&source_dir, &installed)?;
+    crate::minecraft::game_process::ensure_idle(&source_dir)?;
+    crate::minecraft::game_process::ensure_idle(&destination_dir)?;
+    if crate::dependencies::inventory(&destination_dir)? != prepared.inventory {
+        return Err("Destination modpack changed; request a fresh plan.".into());
     }
     let target = mod_path(&destination_dir, &installed.filename)?;
     let mut changes = JarChanges::default();
+    for a in prepared.artifacts.iter().skip(1) {
+        changes.create(&destination_dir.join("mods").join(&a.filename), &a.bytes)?;
+    }
     changes.create(&target, &bytes)?;
     changes.archive(&source_dir, &installed.filename)?;
     let updated = state.update(|data| {
+        data.dependency_records.extend(prepared.records);
         state::update_draft(data, draft_id, |draft| {
             draft.pack_id = Some(pack_id);
             draft.installed_mod = Some(InstalledMod {
@@ -359,7 +403,33 @@ mod tests {
     #[tokio::test]
     async fn install_move_and_delete_persist_history_and_preserve_other_files() {
         let fixture = Fixture::new();
-        let installed = fixture.install(b"verified jar", "fixture.jar").unwrap();
+        let mut jar = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        jar.start_file(
+            "META-INF/mods.toml",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        jar.write_all(b"modLoader='javafml'\nloaderVersion='[52,)'\n[[mods]]\nmodId='fixture'\nversion='1.0'\n").unwrap();
+        let bytes = jar.finish().unwrap().into_inner();
+        fixture
+            .state()
+            .update(|data| {
+                data.settings.dependency_offline = true;
+                data.dependency_grants
+                    .push(crate::dependencies::permissions::Grant {
+                        id: Uuid::new_v4(),
+                        description: "Fixture approval".into(),
+                        scope: crate::dependencies::permissions::Scope {
+                            pack_id: fixture.destination,
+                            target_id: "forge-1.21.1".into(),
+                            action: "Install".into(),
+                            sources: vec!["Local file".into()],
+                        },
+                    });
+                Ok(())
+            })
+            .unwrap();
+        let installed = fixture.install(&bytes, "fixture.jar").unwrap();
         assert!(installed.installed_mod.is_some());
         let reopened = State::new(fixture.root.clone()).unwrap();
         assert_eq!(
@@ -389,7 +459,7 @@ mod tests {
         assert!(!source.join("mods/fixture.jar").exists());
         assert_eq!(
             fs::read(fixture.dir(fixture.destination).join("mods/fixture.jar")).unwrap(),
-            b"verified jar"
+            bytes
         );
         let deleted = delete_mod(fixture.state(), fixture.draft).unwrap();
         assert!(deleted.installed_mod.is_none());
@@ -486,6 +556,31 @@ mod tests {
             b"external edit"
         );
         assert!(fixture.install(b"bad path", "../outside.jar").is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn locked_windows_mod_is_preserved_on_failed_replacement() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let fixture = Fixture::new();
+        fixture.install(b"first", "fixture.jar").unwrap();
+        let path = fixture.dir(fixture.source).join("mods/fixture.jar");
+        let locked = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap();
+        assert!(fixture.install(b"second", "fixture.jar").is_err());
+        drop(locked);
+        assert_eq!(fs::read(path).unwrap(), b"first");
+        assert_eq!(
+            state::draft(&fixture.state().data().unwrap(), fixture.draft)
+                .unwrap()
+                .installed_mod
+                .unwrap()
+                .sha256,
+            sync::sha256_hex(b"first")
+        );
     }
 
     #[test]

@@ -4,6 +4,7 @@ mod agent_models;
 mod builder;
 mod builder_setup;
 mod commands;
+mod dependencies;
 mod draft_files;
 mod minecraft;
 mod mod_installation;
@@ -31,6 +32,11 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            dependencies::permissions::dependency_requests,
+            dependencies::permissions::dependency_decide,
+            dependencies::permissions::dependency_grants,
+            dependencies::permissions::dependency_revoke,
+            dependencies::permissions::dependency_cancel,
             commands::snapshot,
             commands::save_settings,
             commands::complete_onboarding,

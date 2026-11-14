@@ -63,6 +63,8 @@ pub fn default_reasoning_effort() -> String {
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     #[serde(default)]
+    pub dependency_offline: bool,
+    #[serde(default)]
     pub onboarding_complete: bool,
     #[serde(default = "default_model_family")]
     pub model_family: String,
@@ -83,6 +85,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            dependency_offline: false,
             onboarding_complete: false,
             model_family: default_model_family(),
             theme: default_theme(),
@@ -174,6 +177,9 @@ pub struct Draft {
 #[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Data {
+    pub dependency_tool_threads: Vec<String>,
+    pub dependency_grants: Vec<crate::dependencies::permissions::Grant>,
+    pub dependency_records: Vec<crate::dependencies::Record>,
     pub settings: Settings,
     pub packs: Vec<Pack>,
     pub drafts: Vec<Draft>,

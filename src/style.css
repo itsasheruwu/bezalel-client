@@ -23,6 +23,7 @@
   --lime: var(--success);
   --ink: var(--button-text);
   --mono: "Cascadia Code", Consolas, monospace;
+  --scrollbar-thumb: var(--muted);
   color: var(--text);
   background: var(--bg);
 }
@@ -48,6 +49,22 @@
 
 
 *, *::before, *::after { box-sizing: border-box; }
+/* Keep native scrolling, with the same quiet thumb in every scrollable surface. */
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+@supports selector(::-webkit-scrollbar) {
+  @media (forced-colors: none) {
+    /* WebView2 supports precise sizing and rounded thumbs through these selectors. */
+    * { scrollbar-width: auto; scrollbar-color: auto; }
+    *::-webkit-scrollbar { width: 8px; height: 8px; }
+    *::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
+    *::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); background-clip: padding-box; border: 2px solid transparent; border-radius: 8px; min-height: 28px; min-width: 28px; }
+    *::-webkit-scrollbar-thumb:hover { background-color: var(--secondary); }
+    *::-webkit-scrollbar-thumb:active { background-color: var(--text); }
+    *::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  }
+}
+@media (prefers-contrast: more) { :root { --scrollbar-thumb: var(--text); } }
+@media (forced-colors: active) { * { scrollbar-width: auto; scrollbar-color: auto; } }
 body { margin: 0; min-width: 0; }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
@@ -493,10 +510,9 @@ a { color: var(--link); }
 .agent-control-slot[data-expanded="true"] .control-label-face { transform: rotateX(180deg); filter: blur(2px); opacity: .45; }
 .composer textarea { resize: none; }
 .menu-caption { display: flex; justify-content: space-between; padding: 7px 7px 9px; color: var(--secondary); font-size: 10px; }
-.model-menu > button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 8px; border: 0; border-radius: 5px; background: none; color: var(--text); text-align: left; font-size: 12px; }
-.model-menu > button[aria-selected="true"], .model-menu > button:hover:not(:disabled) { background: var(--raised); }
-.model-menu > button > span { flex: 1; }
-.model-menu > button > i { width: 13px; }
+.model-highlights > button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 8px; border: 0; border-radius: 5px; background: none; color: var(--text); text-align: left; font-size: 12px; }
+.model-highlights > button > span { flex: 1; }
+.model-highlights > button > i { width: 13px; }
 .model-error { color: var(--danger); font-size: 10px; padding: 8px; }
 .model-error button { background: none; border: 0; color: var(--link); padding: 6px; }
 /* The readout, slider and composer option share one continuous outline. */
@@ -532,3 +548,146 @@ a { color: var(--link); }
 @media (prefers-reduced-motion: reduce) { .reasoning-popover, .model-popover { animation: none; } .reasoning-thumb, .control-label-face { transition: none; } }
 @media (max-width: 1000px) { .shell { grid-template-columns: 52px minmax(0, 1fr); } .studio-grid { grid-template-columns: 172px minmax(0, 1fr); } .conversation { padding: 24px; } .chat-heading > span { font-size: 10px; } }
 @media (max-width: 760px) { .studio-grid { grid-template-columns: 145px minmax(0, 1fr); } .composer-pack { display: none; } .chat-head { padding-inline: 17px; } .conversation { padding: 21px 18px; } .build-artifact { flex-wrap: wrap; } }
+
+.dependency-requests:empty { display: none; }
+.dependency-card { border: 1px solid var(--strong-line); border-radius: 16px; padding: 20px; margin: 16px 0; background: var(--surface); max-width: 640px; overflow-wrap: anywhere; }
+.dependency-heading { display: flex; gap: 10px; align-items: center; }
+.dependency-card p { margin: 10px 0; line-height: 1.5; }
+.dependency-destination, .dependency-sources, .dependency-items p, .dependency-scope { color: var(--secondary); }
+.dependency-items { list-style: none; padding: 0; max-height: 300px; overflow: auto; border-block: 1px solid var(--line); }
+.dependency-items li { padding: 10px 0; }
+.dependency-items li + li { border-top: 1px solid var(--line); }
+.dependency-items li > div { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
+.dependency-items p { font-size: 12px; margin: 3px 0; }
+.dependency-scope { display: flex; gap: 8px; font-size: 12px; }
+.dependency-scope svg { flex-shrink: 0; margin-top: 3px; }
+.dependency-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.dependency-split { position: relative; display: flex; }
+.dependency-split > .primary:first-child { border-radius: 8px 0 0 8px; }
+.dependency-split > .primary:only-child { border-radius: 8px; }
+.dependency-split > .dependency-arrow { border-radius: 0 8px 8px 0; padding-inline: 9px; border-inline-start: 1px solid var(--strong-line); margin-left: 1px; }
+.dependency-menu { position: absolute; bottom: calc(100% + 5px); right: 0; min-width: 170px; padding: 5px; background: var(--chrome); border: 1px solid var(--strong-line); border-radius: 10px; z-index: 10; transform-origin: bottom right; animation: dependency-menu-open 160ms ease-out both; }
+.dependency-menu button { width: 100%; justify-content: flex-start; }
+.dependency-error { color: var(--danger); }
+.dependency-card :is(button, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@keyframes dependency-menu-open { from { opacity: 0; transform: scale(.88); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .dependency-menu { animation: none; } }
+.reduce-motion .dependency-menu { animation: none; }
+@media (max-width: 560px) { .dependency-card { padding: 14px; } .dependency-items { max-height: 220px; } }
+
+/* Chat approvals use the same neutral controls as the rest of Bezalel. */
+.dependency-card { padding: 15px 17px; margin: 8px 0; font-size: 13px; }
+.dependency-card p { margin: 7px 0; }
+.dependency-heading { gap: 8px; }
+.dependency-heading svg { width: 17px; height: 17px; }
+.dependency-scope { font-size: 11px; }
+.dependency-actions { margin-top: 12px; }
+.dependency-menu button { background: transparent; border-color: transparent; color: var(--text); font-weight: 500; }
+.dependency-menu button:hover { background: var(--raised); }
+.dependency-details { font-size: 11px; color: var(--secondary); }
+.dependency-details summary { cursor: pointer; }
+.conversation-content { display: flex; flex-direction: column; gap: 26px; flex: 0 0 auto; min-width: 0; }
+.conversation { overflow-anchor: none; }
+.jump-latest { position: absolute; bottom: calc(100% + 10px); left: calc(50% - 19px); width: 38px; height: 38px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text); cursor: pointer; z-index: 6; transform-origin: center; }
+.jump-skin { position: absolute; inset: 0; border: 1px solid var(--strong-line); border-radius: 50%; background: var(--surface); }
+.jump-latest:hover .jump-skin { background: var(--surface); }
+.jump-latest > svg.lucide { position: relative; }
+.composer { position: relative; }
+/* Leave the composer's existing 1px border as the only painted border there.
+   The filtered liquid rim must stop above it, rather than alpha-compositing
+   a second outline over it during emergence and return. */
+.jump-latest > .jump-emergence { display: none; position: absolute; top: 0; left: -26px; pointer-events: none; fill: var(--surface); clip-path: inset(0 0 1px); }
+.jump-latest:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.jump-latest.exit, .jump-latest.pop { pointer-events: none; }
+.jump-droplets { position: absolute; inset: 0; pointer-events: none; }
+.jump-droplets i { position: absolute; inset: 0; }
+.jump-droplets i::after { content: ""; position: absolute; left: 17px; top: 16px; width: 4px; height: 6px; background: var(--secondary); border-radius: 65% 65% 45% 45%; opacity: 0; }
+@property --burst-hole { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@media (prefers-reduced-motion: no-preference) {
+  .jump-latest.enter > .jump-emergence { display: block; animation: liquid-release 420ms linear both; }
+  .jump-latest.enter .jump-liquid-head, .jump-latest.enter > svg.lucide { animation: liquid-pull 420ms cubic-bezier(.3,0,.3,1) both; }
+  .jump-latest.enter .jump-skin { animation: liquid-outline 420ms linear both; }
+  .jump-latest.enter > svg.lucide { animation: liquid-pull 420ms cubic-bezier(.3,0,.3,1) both, liquid-arrow 420ms linear both; }
+  .jump-latest.exit > .jump-emergence { display: block; animation: liquid-release 250ms linear reverse both; }
+  .jump-latest.exit .jump-liquid-head { animation: liquid-pull 250ms cubic-bezier(.3,0,.3,1) reverse both; }
+  .jump-latest.exit > svg.lucide { animation: liquid-pull 250ms cubic-bezier(.3,0,.3,1) reverse both, liquid-arrow 250ms linear reverse both; }
+  .jump-latest.exit .jump-skin { animation: liquid-outline 250ms linear reverse both; }
+  .jump-latest.pop .jump-skin { mask-image: radial-gradient(circle at center, transparent var(--burst-hole), #000 calc(var(--burst-hole) + 1px)); animation: center-rupture 240ms ease-out both; }
+  .jump-latest.pop > svg.lucide { animation: burst-icon 70ms ease-out both; }
+  .jump-latest.pop .jump-droplets i::after { animation: water-drop 260ms ease-out both; }
+}
+/* Monotonic travel: no overshoot, squash, spring or rebound. The filtered
+   union forms the neck naturally, then separates as the head clears the rim. */
+@keyframes liquid-pull { from { transform: translateY(44px); } to { transform: translateY(0); } }
+@keyframes liquid-release { 0%, 88% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes liquid-outline { 0%, 88% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes liquid-arrow { 0%, 25% { opacity: 0; } 70%, 100% { opacity: 1; } }
+@keyframes center-rupture { from { --burst-hole: 0px; opacity: 1; } 65% { opacity: 1; } to { --burst-hole: 28px; opacity: 0; } }
+@keyframes burst-icon { to { opacity: 0; } }
+@keyframes water-drop { 0% { opacity: 0; transform: translateY(-5px) scale(.8); } 15% { opacity: .75; } 100% { opacity: 0; transform: translateY(-33px) scale(.25); } }
+.reduce-motion .jump-latest, .reduce-motion .jump-latest *, .reduce-motion .jump-latest *::after { animation: none; }
+.reduce-motion .jump-latest.exit, .reduce-motion .jump-latest.pop { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .jump-latest.exit, .jump-latest.pop { opacity: 0; } }
+
+/* Compact approval: action, destination/source, and a single control row. */
+.dependency-card { max-width: 500px; border-radius: 12px; padding: 12px 14px; margin: 4px 0; }
+.dependency-context { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--secondary); font-size: 12px; }
+.dependency-context > span:last-child { color: var(--muted); }
+.dependency-items { margin: 8px 0; max-height: 180px; }
+.dependency-items li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 9px; padding: 6px 0; font-size: 12px; }
+.dependency-items li > span { color: var(--secondary); }
+.dependency-items li > span:last-child { margin-left: auto; }
+.dependency-actions { align-items: center; gap: 7px; margin-top: 9px; }
+.dependency-actions > .dependency-details { margin-right: auto; }
+.dependency-actions > .dependency-details > div { padding-top: 7px; }
+.dependency-actions:has(.dependency-details[open]) { flex-wrap: wrap; }
+.dependency-actions > .dependency-details[open] { flex: 1 0 100%; }
+.dependency-actions .primary, .dependency-actions .secondary { min-height: 30px; padding: 6px 10px; font-size: 12px; }
+.dependency-menu-scope { padding: 5px 7px; font-size: 11px; line-height: 1.4; color: var(--secondary); }
+.dependency-menu { width: 230px; }
+
+.reduce-motion .jump-latest > .jump-emergence { display: none; }
+
+/* Each sidebar owns a selected layer and a separate, quieter hover layer. */
+.sliding-highlights { position: relative; isolation: isolate; }
+.sidebar-highlight { position: absolute; top: 0; left: 0; border-radius: 6px; pointer-events: none; z-index: 0; opacity: 0; background: var(--raised); }
+.sidebar-highlight.selection[data-visible="true"] { opacity: 1; }
+.sidebar-highlight.hover[data-visible="true"] { opacity: .45; }
+.sliding-highlights > [data-highlight-key] { position: relative; z-index: 1; }
+.shell .rail nav .rail-highlights { display: grid; gap: 8px; width: 100%; }
+.shell .rail nav .sidebar-highlight { display: block; }
+.shell .rail nav .rail-highlights > button,
+.shell .rail nav .rail-highlights > button:hover,
+.shell .rail nav .rail-highlights > button[aria-current],
+.conversation-highlights .draft-item,
+.conversation-highlights .draft-item:hover,
+.conversation-highlights .draft-item[aria-pressed="true"] { background: transparent; }
+@media (prefers-reduced-motion: no-preference) {
+  .sidebar-highlight { transition: opacity 140ms ease-out; }
+  .sidebar-highlight[data-slide="true"] { transition: transform 220ms cubic-bezier(.22,.8,.25,1), width 220ms ease-out, height 220ms ease-out, opacity 140ms ease-out; }
+  .sidebar-highlight.hover[data-slide="true"] { transition-duration: 170ms, 170ms, 170ms, 140ms; }
+}
+.reduce-motion .sidebar-highlight { transition: none; }
+
+.context-menu-root { display: contents; }
+.app-context-menu { position: fixed; inset: auto; margin: 0; width: 246px; max-width: calc(100vw - 16px); overflow: visible; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--text); z-index: 1000; }
+.context-menu-surface { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+.context-menu-surface > path { fill: var(--chrome); stroke: var(--strong-line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.context-menu-items { position: relative; padding: 6px; overflow: auto; max-height: min(var(--context-menu-height, calc(100dvh - 16px)), calc(100dvh - 16px)); }
+.app-context-menu button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 32px; padding: 7px 8px; border: 0; border-radius: 5px; background: transparent; color: inherit; text-align: left; font-size: 12px; font-weight: 400; }
+.context-menu-highlights .sidebar-highlight, .model-highlights .sidebar-highlight { border-radius: 5px; }
+.app-context-menu button:focus-visible { outline-offset: -2px; }
+.app-context-menu button[data-danger] { color: var(--danger); }
+.app-context-menu button:disabled { opacity: .4; }
+.app-context-menu button > span:not(.context-menu-icon) { flex: 1; }
+.context-menu-icon { width: 15px; height: 15px; flex: none; }
+.app-context-menu kbd { margin-left: auto; color: var(--secondary); font: 10px "Segoe UI", sans-serif; white-space: nowrap; }
+.app-context-menu hr { margin: 4px 5px; border: 0; border-top: 1px solid var(--line); }
+.context-menu-error { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 1100; display: flex; align-items: center; gap: 12px; max-width: min(520px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--strong-line); border-radius: 7px; background: var(--chrome); color: var(--text); font-size: 12px; }
+.context-menu-error button { border: 0; background: transparent; color: var(--secondary); padding: 2px 5px; }
+@media (prefers-reduced-motion: no-preference) {
+  .app-context-menu[data-ready="true"] .context-menu-items { animation: context-menu-text 180ms ease-out 70ms both; }
+}
+@keyframes context-menu-text { from { opacity: 0; } to { opacity: 1; } }
+.reduce-motion .context-menu-items { animation: none !important; }
+@media (forced-colors: active) { .context-menu-surface > path { fill: Canvas; stroke: CanvasText; } .app-context-menu button:focus { outline: 1px solid Highlight; } }

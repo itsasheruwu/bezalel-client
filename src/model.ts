@@ -22,13 +22,16 @@ export type Draft = {
 export type ModelFamily = "Astra" | "Sol" | "Terra" | "Luna";
 export type AgentModel = { family: ModelFamily; version: string | null; modelId: string | null; efforts: string[] };
 export type Settings = {
+  dependencyOffline?: boolean;
   modelFamily: ModelFamily; reasoningEffort: string; theme: "light" | "dark" | "system";
   memoryMib: number; autoSync: boolean; reducedMotion: boolean; textScale: number;
   libraryPath: string | null; microsoftClientId: string; syncUrl: string; syncKey: string; onboardingComplete: boolean;
 };
 export type ProfileAvatar = "violet" | "lime" | "ember" | "sky";
 export type SyncProfile = { id: string; name: string; avatar: ProfileAvatar; setupComplete: boolean; canInvite?: boolean };
+export type DependencyRecord = { packId: string; root: string; filename: string; sha256: string; source: string; project: string | null; version: string; versionId: string | null; url: string | null; requiredBy: string[] };
 export type Snapshot = {
+  dependencyRecords: DependencyRecord[];
   settings: Settings; packs: Pack[]; drafts: Draft[]; targets: Target[];
   builderEulaAccepted: boolean; chatgptConnected: boolean; microsoftName: string | null; syncUser: string | null; dataPath: string;
   hostedSharingConfigured: boolean; syncProfile: SyncProfile | null;

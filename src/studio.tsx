@@ -1,11 +1,15 @@
 import { listen } from "@tauri-apps/api/event";
 import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowDownToLine, ArrowRight, Check, ExternalLink, FileCode2, Hammer, MessageCircle, Plus, Sparkles, Square, Trash2, ArrowUp, MoreHorizontal, Package, ChevronDown, X, LoaderCircle } from "lucide-react";
+import { ArrowDownToLine, ArrowRight, Check, Copy, FolderOpen, ExternalLink, FileCode2, Hammer, MessageCircle, Plus, Sparkles, Square, Trash2, ArrowUp, MoreHorizontal, Package, ChevronDown, X, LoaderCircle } from "lucide-react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { Operate } from "./app";
 import { Brand, Feedback, Modal, type Notice } from "./components";
 import { command, loaderName, targetName, withProgress, type AgentModel, type ModelFamily, type ModEvent, type Change, type Draft, type Snapshot } from "./model";
 
+import { JumpToLatest, useChatScroll } from "./chat-scroll";
+import { SlidingHighlights } from "./sliding-highlights";
+import { ContextMenuScope } from "./context-menu";
+import { DependencyRequests } from "./dependency-permissions";
 import { AgentControls } from "./agent-controls";
 import { ContextControl } from "./context-control";
 import { InstalledModControl } from "./installed-mod-control";
@@ -65,7 +69,7 @@ export function Studio({ snapshot, draftId, setDraftId, draftPackId, busy, notic
   const toolsGeneration = useRef(0);
   const [builderConsent, setBuilderConsent] = useState<BuildRequest>();
   const [working, setWorking] = useState<"chat" | "build">();
-  const end = useRef<HTMLDivElement>(null);
+  const { viewport, content, detached, jump } = useChatScroll(draft?.id);
   const locked = snapshot.packs.find(item => item.id === packId);
   const selection = snapshot.targets.find(item => item.id === (locked?.targetId ?? targetId));
   const target = snapshot.targets.find(item => item.id === draft?.targetId);
@@ -98,7 +102,7 @@ export function Studio({ snapshot, draftId, setDraftId, draftPackId, busy, notic
     setIdea(draft?.idea ?? "");
     setPrompt(draft?.idea ?? "");
   }, [draft?.id, draft?.idea]);
-  useEffect(() => { end.current?.scrollIntoView({ block: "nearest" }); }, [draft?.messages.length, draft?.modEvents?.length, stream, pending]);
+
   useEffect(() => { if (draftPackId) setPackId(draftPackId); }, [draftPackId]);
 
   const loadModels = async () => {
@@ -125,7 +129,7 @@ export function Studio({ snapshot, draftId, setDraftId, draftPackId, busy, notic
       if (draft?.threadId && event.payload.params.threadId && event.payload.params.threadId !== draft.threadId) return;
       if (event.payload.method !== "item/started" && event.payload.method !== "item/completed") return;
       const item = event.payload.params.item;
-      if (!item || !["commandExecution", "fileChange", "webSearch", "mcpToolCall"].includes(item.type)) return;
+      if (!item || !["commandExecution", "fileChange", "webSearch", "mcpToolCall", "dynamicToolCall"].includes(item.type)) return;
       setActivity(previous => { const entry = { ...item, complete: event.payload.method === "item/completed" }; const index = previous.findIndex(row => row.id === item.id); return index < 0 ? [...previous.slice(-79), entry] : previous.map((row, i) => i === index ? { ...row, ...entry } : row); });
     });
     return () => { void subscription.then(unlisten => unlisten()); };
@@ -191,12 +195,17 @@ export function Studio({ snapshot, draftId, setDraftId, draftPackId, busy, notic
   return <div className="studio-grid">
     <aside className="draft-rail">
       <div className="section-heading"><h2>Conversations</h2><button className="icon-button" aria-label="New mod" onClick={() => setDraftId()}><Plus size={21} /></button></div>
-      {snapshot.drafts.length ? snapshot.drafts.map(item => <div key={item.id} className="draft-row">
+      {snapshot.drafts.length ? <SlidingHighlights className="conversation-highlights" selectedKey={draftId}>{snapshot.drafts.map(item => <ContextMenuScope key={item.id} label={item.title} actions={[
+        { id: "open", label: "Open conversation", icon: MessageCircle, run: () => setDraftId(item.id) },
+        { id: "copy-title", label: "Copy title", icon: Copy, run: () => navigator.clipboard.writeText(item.title) },
+        { id: "folder", label: "Open project folder", icon: FolderOpen, disabled, run: () => operate("Opening project...", () => command("open_mod_workspace", { id: item.id })) },
+        { id: "delete", label: "Delete conversation…", icon: Trash2, separator: true, danger: true, disabled, run: () => setDeletingDraft(item) },
+      ]}><div className="draft-row" data-highlight-key={item.id}>
         <button className="draft-item" aria-pressed={item.id === draftId} onClick={() => setDraftId(item.id)}>
           <span><strong>{item.title}</strong><span className="version">{item.messages.at(-1)?.text.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*`#]/g, "").slice(0, 56) || targetName(snapshot.targets.find(t => t.id === item.targetId))}</span></span>
         </button>
         <button className="icon-button draft-delete" aria-label={`Delete ${item.title} conversation`} title="Delete mod conversation" disabled={disabled} onClick={() => setDeletingDraft(item)}><Trash2 size={15} /></button>
-      </div>) : <p>Mod conversations are saved here.</p>}
+      </div></ContextMenuScope>)}</SlidingHighlights> : <p>Mod conversations are saved here.</p>}
     </aside>
     {!draft ? <div className="page studio-setup">
       <header className="page-heading"><div><h1>New mod</h1><p>Choose what your mod will run on.</p></div><Hammer className="heading-icon" size={29} /></header>
@@ -228,18 +237,19 @@ export function Studio({ snapshot, draftId, setDraftId, draftPackId, busy, notic
           <details className="project-menu"><summary aria-label="Project actions"><MoreHorizontal size={19} /></summary><div><button disabled={disabled} onClick={() => void editSources()}>Edit source</button><button disabled={disabled} onClick={() => void operate("Opening project...", () => command("open_mod_workspace", { id: draft.id }))}>Open project folder</button><button disabled={disabled || !brief.trim()} onClick={() => void build(true)}>Generate source</button><button onClick={() => setDraftId()}>New mod</button><button disabled={disabled} onClick={() => setDeletingDraft(draft)}>Delete conversation</button></div></details>
         </div>
       </header>
-      <div className="conversation" aria-label="Mod conversation">
-        {!draft.messages.length && snapshot.chatgptConnected && <div className="chat-welcome"><Brand /><h2>What do you want to make?</h2><p>{draft.mode === "guided" ? "Share your idea and Codex will ask one question at a time." : "Describe a mechanic, item, block, or change you’d like to play."}</p></div>}
+      <div ref={viewport} className="conversation" aria-label="Mod conversation"><div ref={content} className="conversation-content">
+        {!draft.messages.length && !pending && !working && snapshot.chatgptConnected && <div className="chat-welcome"><Brand /><h2>What do you want to make?</h2><p>{draft.mode === "guided" ? "Share your idea and Codex will ask one question at a time." : "Describe a mechanic, item, block, or change you’d like to play."}</p></div>}
         {draft.messages.map((message, index) => <Fragment key={index}>
           {modEventsAt(index)}
           {!working && index === draft.messages.length - 1 && message.role === "assistant" && <ToolCalls items={activity} />}
-          <div className={`message ${message.role}`}><div className="message-author">{message.role === "user" ? "You" : "Bezalel"}</div><div className="message-content">{message.role === "assistant" ? <MessageBody text={message.text} disabled={disabled} onExport={draft.build ? () => void exportJar() : undefined} /> : <div className="bubble">{message.text}</div>}
+          <ContextMenuScope label="Message actions" actions={[{ id: "copy-message", label: "Copy message", icon: Copy, run: () => navigator.clipboard.writeText(message.text) }]}><div className={`message ${message.role}`} tabIndex={0}><div className="message-author">{message.role === "user" ? "You" : "Bezalel"}</div><div className="message-content">{message.role === "assistant" ? <MessageBody text={message.text} disabled={disabled} onExport={draft.build ? () => void exportJar() : undefined} /> : <div className="bubble">{message.text}</div>}
             {index === draft.messages.length - 1 && !pending && message.choices?.length ? <div className="answer-row">{message.choices.map(choice => <button className="secondary" key={choice} disabled={disabled || !snapshot.chatgptConnected} onClick={() => void send(choice)}>{choice}</button>)}</div> : null}
-          </div></div>
+          </div></div></ContextMenuScope>
         </Fragment>)}
         {modEventsAt(draft.messages.length)}
         {pending && <div className="message user"><div className="message-author">You</div><div className="bubble">{pending}</div></div>}
         {working && <ToolCalls items={activity} />}
+        <DependencyRequests draftId={draft.id} />
         {stream && <div className="message assistant"><div className="message-author">Bezalel</div><MessageBody text={stream} /></div>}
         {draft.build && <div className="build-artifact"><Package size={21} /><div className="artifact-info"><strong>{draft.build.jarPath.replaceAll("\\", "/").split("/").pop()}</strong><span>{draft.build.compilePassed && draft.build.clientPassed && draft.build.serverPassed ? "Compile, client and server checks passed" : "Build completed with checks to review"}</span><div className="artifact-checks">{[["Compile", draft.build.compilePassed], ["Client", draft.build.clientPassed], ["Server", draft.build.serverPassed]].map(([label, passed]) => <span key={String(label)} data-passed={String(passed)}>{passed ? <Check size={11} /> : <X size={11} />}{label}</span>)}</div>{!!draft.build.diagnostics?.length && <details><summary>Build log</summary><pre>{draft.build.diagnostics.join("\n")}</pre></details>}</div>
           <button className="icon-button" aria-label="Export JAR" title="Export JAR" onClick={() => void exportJar()} disabled={disabled}><ArrowDownToLine size={16} /></button>
@@ -271,11 +281,12 @@ export function Studio({ snapshot, draftId, setDraftId, draftPackId, busy, notic
             <button type="button" className="secondary" onClick={() => openSettings()}>ChatGPT account settings</button>
           </div>
         </div>}
-        <div ref={end} />
+        </div>
       </div>
       {snapshot.chatgptConnected && <div className="composer-wrap">
         <Feedback {...{ busy, notice }} />
         <form className="composer" onSubmit={event => { event.preventDefault(); void send(prompt); }}>
+          <JumpToLatest visible={detached} onJump={jump} />
           <textarea aria-label="Message Bezalel" placeholder="Ask Bezalel something..." value={prompt} onChange={event => setPrompt(event.target.value)} rows={2} maxLength={16_000} disabled={disabled} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
           {!!attachments.length && <div className="attachment-list">{attachments.map(file => <span key={file.path}><FileCode2 size={12} />{file.name}<button type="button" aria-label={`Remove attachment ${file.name}`} onClick={() => setAttachments(files => files.filter(item => item.path !== file.path))}><X size={12} /></button></span>)}</div>}
           <div className="composer-toolbar"><div className="composer-toolbar-left"><button type="button" className="composer-add" aria-label="Attach file" disabled={disabled} onClick={() => void attachFile()}><Plus size={18} /></button>

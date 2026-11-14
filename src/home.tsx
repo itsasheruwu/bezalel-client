@@ -6,6 +6,8 @@ import { AccessCodeDialog } from "./access";
 import { Empty, Feedback, Modal, type Notice } from "./components";
 import { command, packStatus, targetName, withProgress, type Candidate, type Details, type Invite, type Pack, type Release, type Snapshot } from "./model";
 import type { SettingsSection } from "./settings";
+import { DependencyRequests } from "./dependency-permissions";
+import { ContextMenuScope } from "./context-menu";
 import { versionArtwork, type VersionArtwork } from "./version-artwork";
 
 type Props = {
@@ -72,7 +74,7 @@ export function Home({ editMod, snapshot, packId, setPackId, busy, notice, opera
 
     {pack ? <PackDetail key={pack.id} {...{ pack, busy, notice, operate, startMod, sharingAvailable }} targetLabel={targetName(target(pack.targetId))} artwork={versionArtwork(target(pack.targetId)?.minecraftVersion)}
       sharingConnected={Boolean(snapshot.syncUser)} playDirect={canPlay(pack)}
-      projects={snapshot.drafts.filter(draft => draft.packId === pack.id)} onEdit={editMod} onDelete={() => setDeleting(pack)} onBack={() => setPackId()} onPlay={() => play(pack)} onSync={() => sync(pack)} onFolder={() => folder(pack)} onHandoff={() => void handoff(pack)} />
+      dependencyRecords={snapshot.dependencyRecords ?? []} projects={snapshot.drafts.filter(draft => draft.packId === pack.id)} onEdit={editMod} onDelete={() => setDeleting(pack)} onBack={() => setPackId()} onPlay={() => play(pack)} onSync={() => sync(pack)} onFolder={() => folder(pack)} onHandoff={() => void handoff(pack)} />
     : <>
       <header className="page-heading"><div><h1>Your packs</h1><p>Manage your modpacks for Minecraft Java Edition.</p></div>
         <div className="actions"><button className="secondary" onClick={() => setModal("join")}><UsersRound size={17} />Join a pack</button></div>
@@ -94,11 +96,17 @@ export function Home({ editMod, snapshot, packId, setPackId, busy, notice, opera
         {snapshot.packs.length ? <div className="pack-grid">{snapshot.packs.map(item => {
           const artwork = versionArtwork(target(item.targetId)?.minecraftVersion);
           return (
-          <button className={`pack-tile ${featured?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => setSelected(item.id)} onDoubleClick={() => setPackId(item.id)} aria-pressed={featured?.id === item.id}>
+          <ContextMenuScope key={item.id} label={item.name} actions={[
+            { id: "open", label: "Open modpack", icon: FolderOpen, run: () => setPackId(item.id) },
+            { id: "folder", label: "Open game folder", icon: FolderOpen, disabled: Boolean(busy), run: () => folder(item) },
+            { id: "create", label: "Create a mod", icon: Hammer, disabled: Boolean(busy), run: () => startMod(item.id) },
+            { id: "copy-name", label: "Copy name", icon: Clipboard, run: () => navigator.clipboard.writeText(item.name) },
+            { id: "delete", label: "Delete pack…", icon: Trash2, disabled: Boolean(busy), danger: true, separator: true, run: () => setDeleting(item) },
+          ]}><button className={`pack-tile ${featured?.id === item.id ? "selected" : ""}`} onClick={() => setSelected(item.id)} onDoubleClick={() => setPackId(item.id)} aria-pressed={featured?.id === item.id}>
             <span className="tile-art" style={{ backgroundImage: artwork ? `url(${artwork.tile})` : undefined }} />
             <span className="tile-info"><strong>{item.name}</strong><span className="version">{targetName(target(item.targetId))}</span></span>
             <ArrowRight size={15} className="tile-arrow" />
-          </button>);
+          </button></ContextMenuScope>);
         })}</div> : <div className="library-empty"><FolderOpen size={19} /><span>Your new and joined packs appear here.</span></div>}
       </section>
     </>}
@@ -146,11 +154,11 @@ export function Home({ editMod, snapshot, packId, setPackId, busy, notice, opera
   </div>;
 }
 
-function PackDetail({ projects, onEdit, onDelete, pack, targetLabel, artwork, busy, notice, operate, startMod, playDirect, sharingAvailable, sharingConnected, onBack, onPlay, onSync, onFolder, onHandoff }: {
+function PackDetail({ dependencyRecords, projects, onEdit, onDelete, pack, targetLabel, artwork, busy, notice, operate, startMod, playDirect, sharingAvailable, sharingConnected, onBack, onPlay, onSync, onFolder, onHandoff }: {
   pack: Pack; targetLabel: string; busy: string; notice: Notice; operate: Operate; startMod: (id: string) => void;
   artwork?: VersionArtwork;
   playDirect: boolean; sharingAvailable: boolean; sharingConnected: boolean;
-  projects: Snapshot["drafts"]; onEdit: (id: string) => void; onDelete: () => void; onBack: () => void; onPlay: () => void; onSync: () => void; onFolder: () => void; onHandoff: () => void;
+  dependencyRecords: Snapshot["dependencyRecords"]; projects: Snapshot["drafts"]; onEdit: (id: string) => void; onDelete: () => void; onBack: () => void; onPlay: () => void; onSync: () => void; onFolder: () => void; onHandoff: () => void;
 }) {
   const [tab, setTab] = useState("Mods");
   const [details, setDetails] = useState<Details>();
@@ -212,6 +220,7 @@ function PackDetail({ projects, onEdit, onDelete, pack, targetLabel, artwork, bu
     <div className="tabbar" aria-label="Pack views">{["Mods", "Members", "Server", "History"].map(item =>
       <button key={item} aria-pressed={tab === item} onClick={() => setTab(item)}>{item}</button>)}</div>
     <Feedback {...{ busy, notice }} />
+    <DependencyRequests packId={pack.id} />
     {detailError && <Feedback notice={{ kind: "error", text: detailError }} />}
     {tab === "Mods" && <section className="stack">
       <div className="section-heading"><h2>{pack.ownerId ? "Published mods" : "Installed mods"}</h2><div className="actions">
@@ -222,7 +231,13 @@ function PackDetail({ projects, onEdit, onDelete, pack, targetLabel, artwork, bu
         <li key={item.path}><span>{item.path.replace(/^mods\//, "")}</span><span className="version">{item.side}</span></li>)}</ul>
         : details?.localMods.length ? <ul className="data-list">{details.localMods.map(name => {
           const project = projects.find(item => item.build?.jarPath.replaceAll("\\", "/").split("/").pop() === name);
-          return <li key={name}><span>{name}</span><span className="actions">{project && <button className="text-button" disabled={disabled} onClick={() => onEdit(project.id)}>Edit</button>}<button className="text-button" disabled={disabled} aria-label={`Remove ${name}`} onClick={() => setRemovingMod(name)}>Remove</button></span></li>;
+          const records = dependencyRecords.filter(record => record.packId === pack.id && record.filename === name) ?? [];
+          return <ContextMenuScope key={name} label={name} actions={[
+            { id: "copy-name", label: "Copy filename", icon: Clipboard, run: () => navigator.clipboard.writeText(name) },
+            ...(project ? [{ id: "edit", label: "Edit mod", icon: Hammer, disabled, run: () => onEdit(project.id) }] : []),
+            { id: "folder", label: "Open game folder", icon: FolderOpen, disabled, run: onFolder },
+            { id: "remove", label: "Remove mod…", icon: Trash2, separator: true, danger: true, disabled, run: () => setRemovingMod(name) },
+          ]}><li><span>{name}{records.map((record, i) => <details key={i} className="dependency-record"><summary>{record.version} · {record.source}</summary><p>{record.project ? `Project ${record.project}` : "User-provided file"}{record.versionId ? ` · Release ${record.versionId}` : ""}</p><p>{record.requiredBy.length ? `Required by ${record.requiredBy.join(", ")}` : `Requested mod ${record.root}`}</p><p className="path">SHA-256: {record.sha256}</p></details>)}</span><span className="actions">{project && <button className="text-button" disabled={disabled} onClick={() => onEdit(project.id)}>Edit</button>}<button className="text-button" disabled={disabled} aria-label={`Remove ${name}`} onClick={() => setRemovingMod(name)}>Remove</button></span></li></ContextMenuScope>;
         })}</ul>
         : <Empty title="No mods yet">{pack.ownerId ? "Build a mod and send it to the pack for review." : `Add a .jar file you trust for ${targetLabel}, or create a mod for this pack.`}</Empty>}
     </section>}

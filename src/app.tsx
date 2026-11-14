@@ -2,6 +2,8 @@ import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import { FolderOpen, Hammer, House, Settings2 } from "lucide-react";
 import { Brand, Empty, Feedback, Modal, type Notice } from "./components";
+import { SlidingHighlights } from "./sliding-highlights";
+import { ContextMenuScope } from "./context-menu";
 import { Home } from "./home";
 import { Onboarding } from "./onboarding";
 import { Avatar } from "./profile";
@@ -144,10 +146,13 @@ export function App() {
 
     <aside className="rail">
       <div className="brand"><Brand /><span>Bezalel</span></div>
-      <nav aria-label="Main">
-        {nav.map(({ id, label, icon: Icon }) => <button key={id} aria-current={route === id ? "page" : undefined}
-          title={label} aria-label={label} onClick={() => id === "settings" && route !== "settings" ? openSettings() : switchRoute(id)}><Icon size={20} strokeWidth={2.2} /><span>{label}</span></button>)}
-      </nav>
+      <nav aria-label="Main"><SlidingHighlights className="rail-highlights" selectedKey={route}>
+        {nav.map(({ id, label, icon: Icon }) => <ContextMenuScope key={id} label={label} actions={[
+          { id: "open", label: `Open ${label}`, icon: Icon, run: () => id === "settings" ? openSettings() : switchRoute(id) },
+          ...(id === "studio" ? [{ id: "new", label: "New conversation", icon: Hammer, run: () => { setDraftId(undefined); switchRoute("studio"); } }] : []),
+        ]}><button data-highlight-key={id} aria-current={route === id ? "page" : undefined}
+          title={label} aria-label={label} onClick={() => id === "settings" && route !== "settings" ? openSettings() : switchRoute(id)}><Icon size={20} strokeWidth={2.2} /><span>{label}</span></button></ContextMenuScope>)}
+      </SlidingHighlights></nav>
       <div className="rail-bottom">
         {snapshot?.syncProfile && <button type="button" className="rail-profile" title={snapshot.syncProfile.name}
           aria-label={"Account settings for " + snapshot.syncProfile.name} onClick={() => openSettings()}>

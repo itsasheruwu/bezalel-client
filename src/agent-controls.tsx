@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Check, ChevronDown, Moon, Orbit, Sun, Globe2 } from "lucide-react";
 import type { AgentModel, ModelFamily } from "./model";
+import { SlidingHighlights } from "./sliding-highlights";
 
 export const effortName = (value: string) => ({ low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max", ultra: "Ultra" }[value] ?? value);
 const families = ["Astra", "Sol", "Terra", "Luna"] as const;
@@ -135,7 +136,7 @@ export function AgentControls({ models, family, effort, disabled, loading, error
         buttons[next]?.focus();
       }}>
         <div className="menu-caption" aria-busy={loading}>Model</div>
-        {families.map(name => { const model = models.find(item => item.family === name); const FamilyIcon = icons[name]; return <button type="button" key={name} role="option" aria-selected={family === name} disabled={!model?.modelId} onClick={() => { onChange(name, model?.efforts.includes(effort) ? effort : model?.efforts.includes("high") ? "high" : model?.efforts[0] ?? "high"); close(); }}><FamilyIcon size={16} /><span>{name}</span>{family === name ? <Check size={13} /> : <i />}</button>; })}
+        <SlidingHighlights className="model-highlights" selectedKey={family}>{families.map(name => { const model = models.find(item => item.family === name); const FamilyIcon = icons[name]; return <button type="button" key={name} data-highlight-key={name} role="option" aria-selected={family === name} disabled={!model?.modelId} onClick={() => { onChange(name, model?.efforts.includes(effort) ? effort : model?.efforts.includes("high") ? "high" : model?.efforts[0] ?? "high"); close(); }}><FamilyIcon size={16} /><span>{name}</span>{family === name ? <Check size={13} /> : <i />}</button>; })}</SlidingHighlights>
         {error && <div className="model-error" role="alert">{error}<button type="button" onClick={onRefresh}>Retry</button></div>}
       </div></div>}
     </div>

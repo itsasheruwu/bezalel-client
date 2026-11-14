@@ -162,7 +162,36 @@ pub async fn studio_chat(
     if message.trim().is_empty() || message.len() > 48_000 {
         return Err("Enter a message within the draft chat limit.".into());
     }
-    let draft = state::draft(&state.data()?, id)?;
+    let data = state.data()?;
+    let draft = state::draft(&data, id)?;
+    let migrating = draft
+        .thread_id
+        .as_ref()
+        .is_some_and(|thread| !data.dependency_tool_threads.contains(thread));
+    let mut previous_context = if migrating {
+        draft
+            .messages
+            .iter()
+            .rev()
+            .take(12)
+            .rev()
+            .map(|m| {
+                format!(
+                    "{}: {}",
+                    m.role,
+                    m.text.chars().take(2400).collect::<String>()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        String::new()
+    };
+    let context_budget = 48_000usize.saturating_sub(message.len());
+    while previous_context.len() > context_budget {
+        previous_context.pop();
+    }
+
     let target = state::target(&draft.target_id)?;
     let reply = studio::run(
         &state.root,
@@ -175,8 +204,9 @@ pub async fn studio_chat(
             minecraft_version: target.minecraft_version.into(),
             mode: draft.mode,
             prompt: format!(
-                "Mod name: {}\nPlayer message: {}",
+                "Mod name: {}\nPrevious conversation (context only): {}\nPlayer message: {}",
                 draft.title,
+                previous_context,
                 message.trim()
             ),
         },
@@ -226,6 +256,7 @@ pub async fn studio_chat(
 
 #[tauri::command]
 pub fn studio_cancel(id: Uuid) -> bool {
+    crate::dependencies::permissions::cancel_draft(id);
     studio::cancel(&id.to_string())
 }
 

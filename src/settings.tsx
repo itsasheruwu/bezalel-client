@@ -7,6 +7,8 @@ import { Feedback, Modal, type Notice } from "./components";
 import { APP_VERSION, command, type Settings, type Snapshot, type SyncProfile } from "./model";
 import { Avatar, ProfileForm } from "./profile";
 
+import { DependencyPermissions } from "./dependency-permissions";
+
 const sections = ["Accounts", "Game", "Downloads", "Appearance", "Diagnostics"] as const;
 export type SettingsSection = (typeof sections)[number];
 
@@ -81,6 +83,8 @@ export function SettingsPage({ snapshot, busy, notice, operate, initialSection }
     </form>}
     {section === "Downloads" && <div className="panel stack settings-form">
       <label className="check"><input type="checkbox" checked={settings.autoSync} disabled={disabled} onChange={event => void saveSettings({ ...settings, autoSync: event.target.checked })} />Sync trusted packs when Bezalel opens</label>
+      <label className="check"><input type="checkbox" checked={settings.dependencyOffline ?? false} disabled={disabled} onChange={event => void saveSettings({ ...settings, dependencyOffline: event.target.checked })} />Offline dependency resolution (use installed mods only)</label>
+      <DependencyPermissions />
       <h2 className="settings-subheading"><ShieldCheck size={20} />Pack trust</h2>
       {snapshot.packs.filter(pack => pack.ownerId).map(pack => <div className="setting compact" key={pack.id}><div><h2>{pack.name}</h2>
         <p>{pack.trustedOwnerId === pack.ownerId ? "Owner trusted to publish Java mods" : "Owner trust paused"}</p></div>

@@ -18,7 +18,7 @@ npm run tauri -- dev
 ## Use the mod studio
 
 1. Open **Create Mod**, choose a pack or standalone project, and create a draft. Existing projects appear in the pack's **Edit mod** list and in Studio's project rail.
-2. Install Codex CLI **0.167.0**, connect ChatGPT in Settings, and describe the work. Studio runs the full Codex app-server harness in the project's real workspace, with full file, terminal and network access. The loader instructions supply Minecraft context; they do not restrict tools, dependencies or project files. Threads resume between messages. The app displays tool activity, questions and approval requests, and supports stopping a turn.
+2. Install Codex CLI **0.167.0**, connect ChatGPT in Settings, and describe the work. Studio runs the Codex app-server harness in the project's real workspace, with project file and terminal access inside a workspace sandbox and network access for development. Runtime mod installation uses Bezalel's dependency tools and backend-enforced approvals. The loader instructions supply Minecraft context. Threads resume between messages. The app displays tool activity, questions and approval requests, and supports stopping a turn.
 3. Use **Edit mod source** to change Java and text resources directly, or **Open project folder** for the whole project. Ask Codex to build with the project's build tools when it needs custom dependencies. **Build mod** remains an optional pinned Podman build with client/server startup checks; its build constraints apply to that runner, not to Codex.
 4. Export the JAR or install a verified build into a local pack. Imported third-party JARs need their source project to be edited as source; adding a JAR does not reconstruct its original project.
 5. **Delete pack** removes its library entry after confirmation. Personal worlds and installed files remain in the local instance directory, and associated mod projects become standalone. A deleted shared pack stays hidden on this PC; the server and other members are unaffected.
@@ -44,3 +44,5 @@ Before distributing an installer, run these checks with real services and two en
 - Connect two sharing accounts to Postgres and a private S3 bucket. Test invite and trust revocation, interrupted and tampered downloads, updates while Minecraft is open, concurrent publish attempts, and server-first rollback. Check that saves and personal options survive.
 
 Minecraft assets and the Temurin runtime download from their publishers when needed. Budget several GiB for the desktop toolchain and installed Minecraft, plus separate space for each Podman image.
+
+See [CHANGELOG.md](CHANGELOG.md) for project changes and the required commit-message format, and [runtime mod dependencies](docs/mod-dependencies.md) for dependency installation, permissions, and current limits.
